@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Arbitrage Monitor - Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+
+  <style>
+    :root { --bg: radial-gradient(circle at top left, #1e2858 0, #111328 30%, #080312 70%, #020107 100%); --card: rgba(255, 255, 255, 0.05); --green: #00ff9d; --blue: #00f0ff; --red: #ff0055; --text: #f5f7ff; --muted: #8f9bb3; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Rajdhani', sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; padding: 20px; min-height: 100vh; }
+    .app-shell { max-width: 1220px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 20px; }
+    
+    /* Header */
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: rgba(0,0,0,0.4); border: 1px solid rgba(0,240,255,0.2); border-radius: 22px; }
+    .header-title { font-size: 1.4rem; font-weight: 700; text-transform: uppercase; color: var(--blue); display: flex; align-items: center; gap: 10px; }
+    .status-pill { font-size: 0.8rem; background: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 99px; border: 1px solid var(--green); color: var(--green); }
+    .status-error { border-color: var(--red); color: var(--red); }
+    
+    /* Grid */
+    .forex-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .forex-card { background: var(--card); border: 1px solid rgba(255,255,255,0.06); padding: 15px; border-radius: 14px; }
+    .pair-tag { font-size: 0.75rem; color: var(--blue); border: 1px solid var(--blue); padding: 2px 6px; border-radius: 4px; }
+    .forex-val { font-size: 1.8rem; font-weight: 700; margin-top: 5px; }
+    
+    .main-grid { display: grid; grid-template-columns: 1.8fr 1fr; gap: 18px; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,0.06); padding: 20px; border-radius: 22px; display: flex; flex-direction: column; }
+    
+    /* Table */
+    table { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 0.85rem; }
+    th { text-align: left; color: var(--muted); font-size: 0.77rem; padding: 0 10px; }
+    td { background: rgba(255,255,255,0.03); padding: 10px; }
+    td:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+    td:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+    .pos { color: var(--green); } .neg { color: var(--red); } .glow { text-shadow: 0 0 10px rgba(0, 255, 157, 0.5); }
+    .depth-price { font-weight: 600; display: block; }
+    .depth-vol { font-size: 0.7rem; color: var(--muted); display: block; }
+    .side-bid { color: var(--green); font-weight:bold; font-size: 0.7rem; } 
+    .side-ask { color: var(--red); font-weight:bold; font-size: 0.7rem; }
+
+    /* Chart */
+    .chart-box { height: 300px; margin-top: 15px; position: relative; width: 100%; }
+    .chart-controls { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .time-btns button { background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-left: 4px; }
+    .time-btns button.active { background: var(--blue); color: #000; font-weight: bold; }
+    select { background: #000; color: #fff; border: 1px solid #333; padding: 5px; border-radius: 5px; }
+    @media (max-width: 1100px) { .forex-grid, .main-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+  <header class="header">
+    <div class="header-title">● Arbitrage Monitor Pro</div>
+    <div class="status-pill" id="status-text">Connexion...</div>
+  </header>
+
+  <div class="forex-grid" id="forex-container"></div>
+
+  <section class="main-grid">
+    <div class="card">
+      <div style="margin-bottom:15px; font-weight:700; text-transform:uppercase;">Profondeur de Marché (Caméléon)</div>
+      <table>
+        <thead><tr><th>Paire</th><th>Forex</th><th>Ligne 1</th><th>Ligne 2</th><th>Ligne 3</th><th>Ligne 4</th><th>Écart %</th></tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="chart-controls">
+        <select id="pair-select">
+          <option value="USDCPLN">USDC/PLN</option>
+          <option value="USDCRON">USDC/RON</option>
+          <option value="USDCCZK">USDC/CZK</option>
+          <option value="USDCEUR">USDC/EUR</option>
+        </select>
+        <div class="time-btns">
+          <button onclick="setTf('1H')">1H</button>
+          <button onclick="setTf('12H')">12H</button>
+          <button onclick="setTf('24H')" class="active">24H</button>
+          <button onclick="setTf('3J')">3J</button>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="myChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const API_URL = "/.netlify/functions/api"; 
+const REFRESH_MS = 60000; 
+
+const PAIRS_DEF = [
+  { id: "USDCPLN", label: "USDC/PLN", sub: "Zloty Polonais" },
+  { id: "USDCRON", label: "USDC/RON", sub: "Leu Roumain" },
+  { id: "USDCCZK", label: "USDC/CZK", sub: "Couronne Tchèque" },
+  { id: "USDCEUR", label: "USDC/EUR", sub: "Euro" }
+];
+
+const fmt = (n,d=4) => n!=null ? Number(n).toFixed(d) : "--";
+const fmtVol = (n) => n!=null ? Math.round(n).toLocaleString() : "--";
+
+let historyData = {}; 
+let selectedPair = "USDCPLN";
+let currentTimeframe = "24H";
+let chart;
+
+// Init Forex Cards
+document.getElementById('forex-container').innerHTML = PAIRS_DEF.map(p => `
+  <div class="forex-card">
+    <div style="display:flex;justify-content:space-between;"><span class="pair-tag">${p.label}</span><span style="font-size:0.7rem;color:#888" id="time-${p.id}">--</span></div>
+    <div class="forex-val" id="forex-${p.id}">--</div>
+    <div style="font-size:0.7rem;color:#888">TwelveData</div>
+  </div>
+`).join('');
+
+async function fetchData() {
+  try {
+    const res = await fetch(API_URL);
+    if(!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    if(json.live) updateUI(json.live);
+    if(json.history) processHistory(json.history);
+    document.getElementById("status-text").innerText = "Connecté · Live";
+    document.getElementById("status-text").classList.remove("status-error");
+  } catch (e) {
+    console.error(e);
+    document.getElementById("status-text").innerText = "Erreur Données";
+    document.getElementById("status-text").classList.add("status-error");
+  }
+}
+
+function updateUI(live) {
+  const tbody = document.getElementById("table-body");
+  tbody.innerHTML = "";
+  
+  PAIRS_DEF.forEach(def => {
+    const item = live[def.id];
+    if(!item) return;
+    
+    // Forex
+    if(item.forex) {
+      document.getElementById(`forex-${def.id}`).innerText = fmt(item.forex, 4);
+      const d = new Date();
+      document.getElementById(`time-${def.id}`).innerText = `${d.getHours()}:${d.getMinutes()<10?'0':''}${d.getMinutes()}`;
+    }
+
+    const fx = item.forex;
+    let bestBid = item.bids[0]?.price;
+    let bestAsk = item.asks[0]?.price;
+    let spreadBid = ((bestBid - fx)/fx)*100;
+    let spreadAsk = ((bestAsk - fx)/fx)*100;
+    let mode = "BID"; let spread = 0;
+    
+    if(spreadBid > 0) { mode="BID"; spread=spreadBid; }
+    else { mode="ASK"; spread=spreadAsk; }
+
+    const lines = mode==="BID" ? item.bids : item.asks;
+    const col = mode==="BID" ? "pos" : "neg";
+    const lbl = mode==="BID" ? "BID" : "ASK";
+
+    let row = `<tr><td><b>${def.label}</b><br><span style="font-size:0.7rem;color:#888">${def.sub}</span></td>
+        <td><b>${fmt(fx, 4)}</b></td>`;
+    for(let i=0; i<4; i++) {
+        let l = lines[i] || {};
+        row += `<td class="depth-cell"><span class="side-label ${col}">${lbl} ${i+1}</span><br><span class="depth-price">${fmt(l.price,4)}</span><span class="depth-vol">Vol: ${fmtVol(l.volume)}</span></td>`;
+    }
+    let glow = Math.abs(spread)>0.6 ? "glow" : "";
+    row += `<td><b class="${col} ${glow}">${spread>0?"+":""}${fmt(spread,2)}%</b></td></tr>`;
+    tbody.innerHTML += row;
+  });
+}
+
+function processHistory(histArr) {
+  PAIRS_DEF.forEach(p => historyData[p.id] = []);
+  histArr.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  
+  histArr.forEach(row => {
+    const ts = new Date(row.created_at).getTime();
+    const payload = row.data; 
+    if(payload) {
+      PAIRS_DEF.forEach(p => {
+        if(payload[p.id]) {
+          const fx = payload[p.id].forex;
+          const cr = payload[p.id].cryptoRef || payload[p.id].crypto;
+          if(fx && cr) {
+            // CALCUL DU POURCENTAGE (Spread)
+            const spreadPct = ((cr - fx) / fx) * 100;
+            historyData[p.id].push({ x: ts, y: spreadPct });
+          }
+        }
+      });
+    }
+  });
+  updateChart();
+}
+
+function setTf(tf) {
+  currentTimeframe = tf;
+  document.querySelectorAll(".time-btns button").forEach(b => b.classList.remove("active"));
+  const bs = document.querySelectorAll(".time-btns button");
+  for(let b of bs) if(b.innerText===tf) b.classList.add("active");
+  updateChart();
+}
+
+// FONCTION DE COULEUR DYNAMIQUE (Gradient)
+function getGradient(ctx, chartArea) {
+  if(!chartArea) return null;
+  const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+  // Bas = Rouge, Haut = Vert
+  gradient.addColorStop(0, 'rgba(255, 0, 85, 0.5)'); 
+  gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)'); 
+  gradient.addColorStop(1, 'rgba(0, 255, 157, 0.5)'); 
+  return gradient;
+}
+
+function updateChart() {
+  if(!historyData[selectedPair] || !chart) return;
+  
+  const data = historyData[selectedPair];
+  let now = Date.now();
+  let cutoff = 0;
+  
+  if(currentTimeframe==="1H") cutoff = now - 3600000;
+  if(currentTimeframe==="12H") cutoff = now - (12 * 3600000);
+  if(currentTimeframe==="24H") cutoff = now - 86400000;
+  if(currentTimeframe==="3J") cutoff = now - (3 * 86400000);
+  
+  const filtered = data.filter(d => d.x > cutoff);
+
+  chart.data.labels = filtered.map(d => {
+    let date = new Date(d.x);
+    if(currentTimeframe==="1H" || currentTimeframe==="12H" || currentTimeframe==="24H") 
+      return `${date.getHours()}:${date.getMinutes()<10?'0':''}${date.getMinutes()}`;
+    else 
+      return `${date.getDate()}/${date.getMonth()+1}`;
+  });
+
+  chart.data.datasets[0].data = filtered.map(d => d.y);
+  chart.data.datasets[1].data = new Array(filtered.length).fill(0);
+
+  // Scale Auto-Zoom
+  let allVals = filtered.map(d => d.y);
+  if(allVals.length > 0) {
+      let min = Math.min(0, ...allVals);
+      let max = Math.max(0, ...allVals);
+      let padding = (max - min) * 0.1 || 0.05;
+      chart.options.scales.y.min = min - padding;
+      chart.options.scales.y.max = max + padding;
+  }
+  chart.update();
+}
+
+window.onload = () => {
+  const ctx = document.getElementById('myChart').getContext('2d');
+  
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { 
+          label: 'Marge %', 
+          borderColor: '#fff', 
+          borderWidth: 2, 
+          fill: true, 
+          tension: 0.3, 
+          pointRadius: 0,
+          // Couleur dynamique
+          backgroundColor: function(context) {
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) return null;
+            return getGradient(ctx, chartArea);
+          }
+        },
+        { label: '0%', borderColor: '#666', borderDash: [5,5], borderWidth: 1, pointRadius: 0, data: [], fill: false }
+      ]
+    },
+    options: {
+      responsive: true, 
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: { 
+        y: { 
+            grid:{color:'rgba(255,255,255,0.05)'}, 
+            ticks:{ color:'#888', stepSize: 0.05, callback:(v)=>v.toFixed(2)+'%' } 
+        }, 
+        x: { grid:{display:false}, ticks:{maxTicksLimit: 8, color: '#888'} } 
+      },
+      plugins: { 
+        legend: { display: false },
+        zoom: {
+            pan: { enabled: true, mode: 'x' },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+        }
+      }
+    }
+  });
+  
+  document.getElementById('pair-select').addEventListener('change', e => { selectedPair = e.target.value; updateChart(); });
+  
+  fetchData();
+  setInterval(fetchData, REFRESH_MS);
+};
+</script>
+</body>
+</html>
