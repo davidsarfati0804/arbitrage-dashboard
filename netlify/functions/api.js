@@ -198,19 +198,42 @@ const handler = async (event, context) => {
       
       if (sinceISO) {
         // Fetch all rows matching the time filter in one query (no range)
+        // NOTE: Supabase has default limit of 1000. Use range to fetch more if needed
         let query = supabase
           .from("arb_history")
           .select("*", { count: 'exact' })
           .gte('created_at', sinceISO)
           .order("created_at", { ascending: false });
         
-        const { data: hist, error, count } = await query;
+        let hist = [];
+        let page = 0;
+        let hasMore = true;
+        const pageSize = 1000;
         
-        if (error) {
-          console.error('⚠️ History fetch error (filtered):', error.message);
-        } else if (hist && hist.length > 0) {
+        // Paginate through all matching rows
+        while (hasMore && page < 10) {  // Max 10 pages = 10k rows
+          const start = page * pageSize;
+          const { data: pageData, error, count } = await query.range(start, start + pageSize - 1);
+          
+          if (error) {
+            console.error('⚠️ History fetch error (filtered, page', page + '):', error.message);
+            break;
+          }
+          
+          if (!pageData || pageData.length === 0) {
+            hasMore = false;
+          } else {
+            hist = hist.concat(pageData);
+            if (pageData.length < pageSize) {
+              hasMore = false;
+            }
+          }
+          page++;
+        }
+        
+        if (hist && hist.length > 0) {
           allHistory = hist;
-          console.log(`✓ Fetched ${hist.length} rows since ${sinceISO} (total matching: ${count})`);
+          console.log(`✓ Fetched ${hist.length} rows since ${sinceISO}`);
         }
       } else {
         // No filter: paginate to avoid huge responses
@@ -250,11 +273,31 @@ const handler = async (event, context) => {
       }
 
       // Downsample on server to reduce payload if necessary
-      const maxPoints = 5000; // target maximum points to return (user requested ~5k)
+      // Be more aggressive for long timeframes (3J can have 4000+ rows)
+      let maxPoints = 5000;
+      console.log('DEBUG: sinceISO=', sinceISO, 'allHistory.length=', allHistory.length);
+      if (sinceISO) {
+        const sinceTime = new Date(sinceISO).getTime();
+        const nowTime = Date.now();
+        const hoursAgo = (nowTime - sinceTime) / (3600 * 1000);
+        console.log('DEBUG: hoursAgo=', hoursAgo);
+        // For 3+ days, reduce to 1000 points to avoid timeout
+        if (hoursAgo >= 72) {
+          maxPoints = 1000;
+          console.log('DEBUG: Setting maxPoints to 1000 for 3J');
+        }
+        // For 24H, use 2000 points
+        else if (hoursAgo >= 24) {
+          maxPoints = 2000;
+          console.log('DEBUG: Setting maxPoints to 2000 for 24H');
+        }
+      }
+      
       let sampledHistory;
       if (allHistory.length > maxPoints) {
         const step = Math.ceil(allHistory.length / maxPoints);
         sampledHistory = allHistory.filter((_, i) => i % step === 0);
+        console.log('DEBUG: Sampled from', allHistory.length, 'to', sampledHistory.length);
       } else {
         sampledHistory = allHistory;
       }
