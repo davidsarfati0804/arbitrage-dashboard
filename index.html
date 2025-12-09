@@ -291,8 +291,8 @@ function updateChart() {
       return `${date.getDate()}/${date.getMonth()+1}`;
   });
 
-  chart.data.datasets[0].data = filtered.map(d => d.y);
-  chart.data.datasets[1].data = new Array(filtered.length).fill(0);
+  // Pass full objects with x, y, bid1Vol, ask1Vol for tooltip access
+  chart.data.datasets[0].data = filtered;
 
   // Scale Auto-Zoom
   let allVals = filtered.map(d => d.y);
@@ -328,8 +328,7 @@ window.onload = () => {
             if (!chartArea) return null;
             return getGradient(ctx, chartArea);
           }
-        },
-        { label: '0%', borderColor: '#666', borderDash: [5,5], borderWidth: 1, pointRadius: 0, data: [], fill: false }
+        }
       ]
     },
     options: {
