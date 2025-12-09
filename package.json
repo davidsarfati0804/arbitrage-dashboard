@@ -5,10 +5,19 @@
   "scripts": {
     "dev": "netlify dev",
     "build": "echo \"No build step\"",
-    "start": "netlify dev"
+    "start": "netlify dev",
+    "cron": "node cron_runner.js --loop --interval=61",
+    "cron:once": "node cron_runner.js --once --force"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "axios": "^1.7.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "compression": "^1.8.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "minimist": "^1.2.8"
+  },
+  "devDependencies": {
+    "netlify-cli": "^23.12.3"
   }
 }

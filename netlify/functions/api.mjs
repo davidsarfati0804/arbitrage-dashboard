@@ -1,3 +1,7 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+require('dotenv').config();
+
 const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 

@@ -109,6 +109,7 @@ let historyData = {};
 let selectedPair = "USDCPLN";
 let currentTimeframe = "24H";
 let chart;
+let isFetching = false;
 
 // Init Forex Cards
 document.getElementById('forex-container').innerHTML = PAIRS_DEF.map(p => `
@@ -120,8 +121,24 @@ document.getElementById('forex-container').innerHTML = PAIRS_DEF.map(p => `
 `).join('');
 
 async function fetchData() {
+  if (isFetching) return; // Prevent multiple simultaneous fetches
+  isFetching = true;
+  
   try {
-    const res = await fetch(API_URL);
+    // Show loading state
+    document.getElementById("status-text").innerText = "Chargement...";
+    document.getElementById("status-text").classList.add("status-error");
+    
+    // compute since based on selected timeframe to limit data transfer
+    const now = Date.now();
+    let since = null;
+    if (currentTimeframe === '1H') since = now - 1 * 3600 * 1000;
+    if (currentTimeframe === '12H') since = now - 12 * 3600 * 1000;
+    if (currentTimeframe === '24H') since = now - 24 * 3600 * 1000;
+    if (currentTimeframe === '3J') since = now - 3 * 24 * 3600 * 1000;
+
+    const url = since ? `${API_URL}?since=${since}` : API_URL;
+    const res = await fetch(url);
     if(!res.ok) throw new Error(res.status);
     const json = await res.json();
     if(json.live) updateUI(json.live);
@@ -132,6 +149,8 @@ async function fetchData() {
     console.error(e);
     document.getElementById("status-text").innerText = "Erreur Données";
     document.getElementById("status-text").classList.add("status-error");
+  } finally {
+    isFetching = false;
   }
 }
 
@@ -177,17 +196,38 @@ function updateUI(live) {
 }
 
 function processHistory(histArr) {
+  // Reset all pair data before processing
   PAIRS_DEF.forEach(p => historyData[p.id] = []);
+  
+  // Sort chronologically (oldest to newest)
   histArr.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
   
   histArr.forEach(row => {
-    const ts = new Date(row.created_at).getTime();
-    const payload = row.data; 
-    if(payload) {
+    // Handle new minimized format (with pairs object and fxTimestamp)
+    // or legacy format (with data object and payload.meta.fxTimestamp)
+    let ts = 0;
+    let pairsData = null;
+    
+    if (row.pairs) {
+      // New format: row.pairs is the pairs object, fxTimestamp is at row level
+      pairsData = row.pairs;
+      ts = row.fxTimestamp ? Number(row.fxTimestamp) : new Date(row.created_at).getTime();
+    } else if (row.data) {
+      // Legacy format: row.data contains the payload
+      const payload = row.data;
+      pairsData = payload;
+      if (payload && payload.meta && payload.meta.fxTimestamp) {
+        ts = Number(payload.meta.fxTimestamp);
+      } else {
+        ts = new Date(row.created_at).getTime();
+      }
+    }
+    
+    if(pairsData) {
       PAIRS_DEF.forEach(p => {
-        if(payload[p.id]) {
-          const fx = payload[p.id].forex;
-          const cr = payload[p.id].cryptoRef || payload[p.id].crypto;
+        if(pairsData[p.id]) {
+          const fx = pairsData[p.id].forex;
+          const cr = pairsData[p.id].cryptoRef;
           if(fx && cr) {
             // CALCUL DU POURCENTAGE (Spread)
             const spreadPct = ((cr - fx) / fx) * 100;
@@ -197,6 +237,8 @@ function processHistory(histArr) {
       });
     }
   });
+  
+  console.log('✓ Processed history:', histArr.length, 'rows into', Object.entries(historyData).map(([k,v]) => `${k}:${v.length}`).join(', '));
   updateChart();
 }
 
@@ -205,7 +247,8 @@ function setTf(tf) {
   document.querySelectorAll(".time-btns button").forEach(b => b.classList.remove("active"));
   const bs = document.querySelectorAll(".time-btns button");
   for(let b of bs) if(b.innerText===tf) b.classList.add("active");
-  updateChart();
+  // Refetch data when changing timeframe to get appropriate data
+  fetchData();
 }
 
 // FONCTION DE COULEUR DYNAMIQUE (Gradient)
