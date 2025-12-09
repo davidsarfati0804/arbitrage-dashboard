@@ -190,24 +190,24 @@ const handler = async (event, context) => {
       const sinceISO = sinceParam ? new Date(sinceParam).toISOString() : null;
 
       // Fetch history: determine limit based on timeframe to avoid timeout
-      // Supabase enforces a 1000 row cap per request, so we paginate a few pages max.
+      // Supabase max-rows set to 5000, so we can fetch more per request now
       let allHistory = [];
-      let queryLimit = 5000; // default
+      let queryLimit = 5000; // default (can now fetch up to 5000 per query)
       if (sinceISO) {
         const sinceTime = new Date(sinceISO).getTime();
         const nowTime = Date.now();
         const hoursAgo = (nowTime - sinceTime) / (3600 * 1000);
         if (hoursAgo >= 72) {
-          queryLimit = 2000; // 3J → fetch ~2 pages (2 x 1000)
-          console.log(`⏱️ 3J detected (${hoursAgo.toFixed(1)}h): queryLimit = 2000`);
+          queryLimit = 5000; // 3J → fetch up to 5000 rows (all we need)
+          console.log(`⏱️ 3J detected (${hoursAgo.toFixed(1)}h): queryLimit = 5000`);
         } else if (hoursAgo >= 24) {
-          queryLimit = 3000; // 24H → up to 3 pages
+          queryLimit = 3000; // 24H → fetch 3000
           console.log(`⏱️ 24H detected (${hoursAgo.toFixed(1)}h): queryLimit = 3000`);
         }
       }
 
       try {
-        const pageSize = 1000; // Supabase cap per request
+        const pageSize = 5000; // Now matches Supabase max-rows config
         const maxPages = Math.ceil(queryLimit / pageSize);
         for (let page = 0; page < maxPages; page++) {
           const start = page * pageSize;
