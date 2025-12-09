@@ -189,43 +189,50 @@ const handler = async (event, context) => {
       const sinceParam = params.since ? parseInt(params.since, 10) : null;
       const sinceISO = sinceParam ? new Date(sinceParam).toISOString() : null;
 
-      // Fetch history: Determine limit based on timeframe to avoid timeout
+      // Fetch history: determine limit based on timeframe to avoid timeout
+      // Supabase enforces a 1000 row cap per request, so we paginate a few pages max.
       let allHistory = [];
       let queryLimit = 5000; // default
-      
       if (sinceISO) {
         const sinceTime = new Date(sinceISO).getTime();
         const nowTime = Date.now();
         const hoursAgo = (nowTime - sinceTime) / (3600 * 1000);
-        // For 3+ days (3J), limit to 2000 rows to fetch faster
-        // (downsampling will reduce to ~1000 after)
         if (hoursAgo >= 72) {
-          queryLimit = 2000;
+          queryLimit = 2000; // 3J → fetch ~2 pages (2 x 1000)
           console.log(`⏱️ 3J detected (${hoursAgo.toFixed(1)}h): queryLimit = 2000`);
         } else if (hoursAgo >= 24) {
-          queryLimit = 3000;
+          queryLimit = 3000; // 24H → up to 3 pages
           console.log(`⏱️ 24H detected (${hoursAgo.toFixed(1)}h): queryLimit = 3000`);
         }
       }
-      
-      // Single query with ORDER + LIMIT (much faster than pagination)
+
       try {
-        let query = supabase
-          .from("arb_history")
-          .select("*")
-          .order("created_at", { ascending: false });
-        
-        if (sinceISO) {
-          query = query.gte('created_at', sinceISO);
+        const pageSize = 1000; // Supabase cap per request
+        const maxPages = Math.ceil(queryLimit / pageSize);
+        for (let page = 0; page < maxPages; page++) {
+          const start = page * pageSize;
+          const end = start + pageSize - 1;
+          let query = supabase
+            .from("arb_history")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(start, end);
+
+          if (sinceISO) {
+            query = query.gte('created_at', sinceISO);
+          }
+
+          const { data: hist, error } = await query;
+          if (error) {
+            console.error('⚠️ History fetch error (page', page + '):', error.message);
+            break;
+          }
+          if (!hist || hist.length === 0) break;
+          allHistory = allHistory.concat(hist);
+          if (hist.length < pageSize) break; // last page
         }
-        
-        const { data: hist, error } = await query.limit(queryLimit);
-        
-        if (error) {
-          console.error('⚠️ History fetch error:', error.message);
-        } else if (hist && hist.length > 0) {
-          allHistory = hist;
-          console.log(`✓ Fetched ${hist.length} rows (limit was ${queryLimit})`);
+        if (allHistory.length > 0) {
+          console.log(`✓ Fetched ${allHistory.length} rows (limit target ${queryLimit})`);
         }
       } catch (e) {
         console.error('❌ History query exception:', e.message);
