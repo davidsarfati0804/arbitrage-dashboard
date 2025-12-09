@@ -2,9 +2,8 @@
   # Indispensable : Netlify doit savoir où chercher les fonctions
   functions = "netlify/functions"
 
-  # Commande de construction (même si on ne fait rien de complexe)
-  # Netlify a besoin d'une commande 'build' pour certains déploiements
-  command = "echo 'Pas de build complexe nécessaire.'"
+  # Force rebuild: install dependencies properly
+  command = "npm install --production"
 
 [functions]
   # Chemin vers les fonctions (redondance de sécurité)
