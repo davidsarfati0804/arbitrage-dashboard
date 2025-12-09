@@ -260,7 +260,7 @@ const handler = async (event, context) => {
       }
 
       // Reduce payload: keep only minimal fields for history to reduce JSON size
-      // For each row keep: id, created_at, meta.fxTimestamp (if any), and per-pair { forex, cryptoRef }
+      // For each row keep: id, created_at, meta.fxTimestamp (if any), and per-pair { forex, cryptoRef, bid1Vol, ask1Vol }
       const minimal = sampledHistory.map(r => {
         const out = { id: r.id, created_at: r.created_at };
         const ts = r.data && r.data.meta && r.data.meta.fxTimestamp ? Number(r.data.meta.fxTimestamp) : null;
@@ -269,9 +269,13 @@ const handler = async (event, context) => {
         try {
           for (const p of PAIRS) {
             if (r.data && r.data[p.id]) {
+              const pairData = r.data[p.id];
               out.pairs[p.id] = {
-                forex: r.data[p.id].forex ?? null,
-                cryptoRef: r.data[p.id].cryptoRef ?? r.data[p.id].crypto ?? null
+                forex: pairData.forex ?? null,
+                cryptoRef: pairData.cryptoRef ?? pairData.crypto ?? null,
+                // Extract volumes from bids and asks arrays
+                bid1Vol: pairData.bids?.[0]?.volume ?? null,
+                ask1Vol: pairData.asks?.[0]?.volume ?? null
               };
             }
           }

@@ -110,6 +110,7 @@ let selectedPair = "USDCPLN";
 let currentTimeframe = "24H";
 let chart;
 let isFetching = false;
+let liveData = null;  // Store live data for tooltip volumes
 
 // Init Forex Cards
 document.getElementById('forex-container').innerHTML = PAIRS_DEF.map(p => `
@@ -231,7 +232,13 @@ function processHistory(histArr) {
           if(fx && cr) {
             // CALCUL DU POURCENTAGE (Spread)
             const spreadPct = ((cr - fx) / fx) * 100;
-            historyData[p.id].push({ x: ts, y: spreadPct });
+            // Include volume data for tooltip
+            historyData[p.id].push({ 
+              x: ts, 
+              y: spreadPct,
+              bid1Vol: pairsData[p.id].bid1Vol,
+              ask1Vol: pairsData[p.id].ask1Vol
+            });
           }
         }
       });
@@ -338,6 +345,41 @@ window.onload = () => {
       },
       plugins: { 
         legend: { display: false },
+        tooltip: {
+          enabled: true,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          borderColor: '#00f0ff',
+          borderWidth: 1,
+          padding: 10,
+          displayColors: false,
+          callbacks: {
+            title: function(context) {
+              const d = new Date(context[0].raw.x);
+              if(currentTimeframe==="1H" || currentTimeframe==="12H" || currentTimeframe==="24H") 
+                return `${d.getHours()}:${d.getMinutes()<10?'0':''}${d.getMinutes()}`;
+              else 
+                return `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${d.getMinutes()<10?'0':''}${d.getMinutes()}`;
+            },
+            label: function(context) {
+              const vol = context.raw;
+              let label = `Spread: ${vol.y.toFixed(3)}%`;
+              // Show historical bid/ask volumes (data may be missing for old historical records)
+              if(vol.bid1Vol !== null && vol.bid1Vol !== undefined) {
+                label += ` | Bid 1 Vol: ${Math.round(vol.bid1Vol).toLocaleString()}`;
+              } else {
+                label += ` | Bid 1 Vol: N/A`;
+              }
+              if(vol.ask1Vol !== null && vol.ask1Vol !== undefined) {
+                label += ` | Ask 1 Vol: ${Math.round(vol.ask1Vol).toLocaleString()}`;
+              } else {
+                label += ` | Ask 1 Vol: N/A`;
+              }
+              return label;
+            }
+          }
+        },
         zoom: {
             pan: { enabled: true, mode: 'x' },
             zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
