@@ -1,18 +1,4 @@
-[dotenv@17.2.3] injecting env (3) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (3) from .env -- tip: ⚙️  override existing env vars with { override: true }
 Dev server: http://localhost:3000
-✓ Fetched 60 rows since 2025-12-09T10:27:46.880Z
-DEBUG: sinceISO= 2025-12-09T10:27:46.880Z allHistory.length= 60
-DEBUG: hoursAgo= 1.001116388888889
-✓ Fetched 4324 rows since 2025-12-06T11:28:23.000Z
-DEBUG: sinceISO= 2025-12-06T11:28:23.000Z allHistory.length= 4324
-DEBUG: hoursAgo= 72.00168083333334
-DEBUG: Setting maxPoints to 1000 for 3J
-DEBUG: Sampled from 4324 to 865
-✓ Fetched 4324 rows since 2025-12-06T11:28:38.000Z
-DEBUG: sinceISO= 2025-12-06T11:28:38.000Z allHistory.length= 4324
-DEBUG: hoursAgo= 72.00162944444445
-DEBUG: Setting maxPoints to 1000 for 3J
-DEBUG: Sampled from 4324 to 865
-✓ Fetched 60 rows since 2025-12-09T10:28:47.880Z
-DEBUG: sinceISO= 2025-12-09T10:28:47.880Z allHistory.length= 60
-DEBUG: hoursAgo= 1.0007433333333333
+⏱️ 3J detected (72.0h): queryLimit = 2000
+✓ Fetched 1000 rows (limit was 2000)

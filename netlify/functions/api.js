@@ -189,107 +189,62 @@ const handler = async (event, context) => {
       const sinceParam = params.since ? parseInt(params.since, 10) : null;
       const sinceISO = sinceParam ? new Date(sinceParam).toISOString() : null;
 
-      // Pagination fetch: supabase REST tends to limit to ~1000 per page, donc on pagine
+      // Fetch history: Determine limit based on timeframe to avoid timeout
       let allHistory = [];
+      let queryLimit = 5000; // default
       
-      // For filtered queries (with sinceISO), we need to fetch without range limit
-      // because .gte() with .range() applies filter AFTER pagination (broken).
-      // Instead, we fetch all matching rows in one shot by removing range constraint.
-      
-      if (sinceISO) {
-        // Fetch all rows matching the time filter in one query (no range)
-        // NOTE: Supabase has default limit of 1000. Use range to fetch more if needed
-        let query = supabase
-          .from("arb_history")
-          .select("*", { count: 'exact' })
-          .gte('created_at', sinceISO)
-          .order("created_at", { ascending: false });
-        
-        let hist = [];
-        let page = 0;
-        let hasMore = true;
-        const pageSize = 1000;
-        
-        // Paginate through all matching rows
-        while (hasMore && page < 10) {  // Max 10 pages = 10k rows
-          const start = page * pageSize;
-          const { data: pageData, error, count } = await query.range(start, start + pageSize - 1);
-          
-          if (error) {
-            console.error('⚠️ History fetch error (filtered, page', page + '):', error.message);
-            break;
-          }
-          
-          if (!pageData || pageData.length === 0) {
-            hasMore = false;
-          } else {
-            hist = hist.concat(pageData);
-            if (pageData.length < pageSize) {
-              hasMore = false;
-            }
-          }
-          page++;
-        }
-        
-        if (hist && hist.length > 0) {
-          allHistory = hist;
-          console.log(`✓ Fetched ${hist.length} rows since ${sinceISO}`);
-        }
-      } else {
-        // No filter: paginate to avoid huge responses
-        let page = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-
-        while (hasMore) {
-          const start = page * pageSize;
-          const { data: hist, error } = await supabase
-            .from("arb_history")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .range(start, start + pageSize - 1);
-
-          if (error) {
-            console.error('⚠️ History pagination error (page', page + '):', error.message);
-            break;
-          }
-
-          if (!hist || hist.length === 0) {
-            hasMore = false;
-          } else {
-            allHistory = allHistory.concat(hist);
-            if (hist.length < pageSize) {
-              hasMore = false;
-            }
-          }
-          page++;
-
-          // Safety: stop after 50 pages (~50k rows) to avoid timeout
-          if (page > 50) {
-            console.warn('⚠️ Pagination stopped at 50 pages');
-            hasMore = false;
-          }
-        }
-      }
-
-      // Downsample on server to reduce payload if necessary
-      // Be more aggressive for long timeframes (3J can have 4000+ rows)
-      let maxPoints = 5000;
-      console.log('DEBUG: sinceISO=', sinceISO, 'allHistory.length=', allHistory.length);
       if (sinceISO) {
         const sinceTime = new Date(sinceISO).getTime();
         const nowTime = Date.now();
         const hoursAgo = (nowTime - sinceTime) / (3600 * 1000);
-        console.log('DEBUG: hoursAgo=', hoursAgo);
-        // For 3+ days, reduce to 1000 points to avoid timeout
+        // For 3+ days (3J), limit to 2000 rows to fetch faster
+        // (downsampling will reduce to ~1000 after)
         if (hoursAgo >= 72) {
-          maxPoints = 1000;
-          console.log('DEBUG: Setting maxPoints to 1000 for 3J');
+          queryLimit = 2000;
+          console.log(`⏱️ 3J detected (${hoursAgo.toFixed(1)}h): queryLimit = 2000`);
+        } else if (hoursAgo >= 24) {
+          queryLimit = 3000;
+          console.log(`⏱️ 24H detected (${hoursAgo.toFixed(1)}h): queryLimit = 3000`);
         }
-        // For 24H, use 2000 points
+      }
+      
+      // Single query with ORDER + LIMIT (much faster than pagination)
+      try {
+        let query = supabase
+          .from("arb_history")
+          .select("*")
+          .order("created_at", { ascending: false });
+        
+        if (sinceISO) {
+          query = query.gte('created_at', sinceISO);
+        }
+        
+        const { data: hist, error } = await query.limit(queryLimit);
+        
+        if (error) {
+          console.error('⚠️ History fetch error:', error.message);
+        } else if (hist && hist.length > 0) {
+          allHistory = hist;
+          console.log(`✓ Fetched ${hist.length} rows (limit was ${queryLimit})`);
+        }
+      } catch (e) {
+        console.error('❌ History query exception:', e.message);
+      }
+
+      // Downsample on server to reduce payload if necessary
+      // Be aggressive for long timeframes (3J can have 2000 rows fetched)
+      let maxPoints = 5000;
+      if (sinceISO) {
+        const sinceTime = new Date(sinceISO).getTime();
+        const nowTime = Date.now();
+        const hoursAgo = (nowTime - sinceTime) / (3600 * 1000);
+        // For 3+ days, downsample to 800 points (from 2000 fetched)
+        if (hoursAgo >= 72) {
+          maxPoints = 800;
+        }
+        // For 24H, downsample to 1200 points (from 3000 fetched)
         else if (hoursAgo >= 24) {
-          maxPoints = 2000;
-          console.log('DEBUG: Setting maxPoints to 2000 for 24H');
+          maxPoints = 1200;
         }
       }
       
@@ -297,7 +252,6 @@ const handler = async (event, context) => {
       if (allHistory.length > maxPoints) {
         const step = Math.ceil(allHistory.length / maxPoints);
         sampledHistory = allHistory.filter((_, i) => i % step === 0);
-        console.log('DEBUG: Sampled from', allHistory.length, 'to', sampledHistory.length);
       } else {
         sampledHistory = allHistory;
       }
