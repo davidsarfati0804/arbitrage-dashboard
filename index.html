@@ -83,7 +83,7 @@
           <button onclick="setTf('1H')">1H</button>
           <button onclick="setTf('12H')">12H</button>
           <button onclick="setTf('24H')" class="active">24H</button>
-          <button onclick="setTf('3J')">3J</button>
+          <!-- <button onclick="setTf('3J')">3J</button> -->
         </div>
       </div>
       <div class="chart-box"><canvas id="myChart"></canvas></div>
@@ -136,7 +136,7 @@ async function fetchData() {
     if (currentTimeframe === '1H') since = now - 1 * 3600 * 1000;
     if (currentTimeframe === '12H') since = now - 12 * 3600 * 1000;
     if (currentTimeframe === '24H') since = now - 24 * 3600 * 1000;
-    if (currentTimeframe === '3J') since = now - 3 * 24 * 3600 * 1000;
+    // if (currentTimeframe === '3J') since = now - 3 * 24 * 3600 * 1000;
 
     const url = since ? `${API_URL}?since=${since}` : API_URL;
     const res = await fetch(url);
@@ -279,7 +279,7 @@ function updateChart() {
   if(currentTimeframe==="1H") cutoff = now - 3600000;
   if(currentTimeframe==="12H") cutoff = now - (12 * 3600000);
   if(currentTimeframe==="24H") cutoff = now - 86400000;
-  if(currentTimeframe==="3J") cutoff = now - (3 * 86400000);
+  // if(currentTimeframe==="3J") cutoff = now - (3 * 86400000);
   
   const filtered = data.filter(d => d.x > cutoff);
 
